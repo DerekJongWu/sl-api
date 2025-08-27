@@ -1,9 +1,11 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 import os
 from datetime import datetime
 import numpy as np
 from sl_package import Game
 from sl_package.sampling import sample_from_distribution
+import pandas as pd
+import io
 
 app = Flask(__name__)
 
@@ -240,20 +242,21 @@ def receive_game_info():
                     'status': 'error'
                 }), 400
         
-        # Add timestamp if not provided
-        if 'timestamp' not in data:
-            data['timestamp'] = datetime.now().isoformat()
+        # For now, just return an empty Excel file
+        # TODO: Replace this with actual game info processing when ready
         
-        # Process the data using custom software package
-        processed_results = process_game_info(data)
+        # Create an empty Excel file in memory
+        df = pd.DataFrame()
+        output = io.BytesIO()
+        df.to_excel(output, index=False)
+        output.seek(0)
         
-        return jsonify({
-            'message': 'Game info processed successfully',
-            'status': 'success',
-            'input_timestamp': data['timestamp'],
-            'processing_timestamp': processed_results['processing_timestamp'],
-            'results': processed_results
-        }), 200
+        return send_file(
+            output, 
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+            as_attachment=True, 
+            download_name='game_info_results.xlsx'
+        )
         
     except Exception as e:
         return jsonify({
