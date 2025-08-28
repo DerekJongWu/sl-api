@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, send_file
+from flask_cors import CORS
 import os
 from datetime import datetime
 import numpy as np
@@ -8,6 +9,7 @@ import pandas as pd
 import io
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 def evaluate_formula(formula, sampled_values, player_suffix, variables_data):
     """
