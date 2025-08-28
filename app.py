@@ -122,7 +122,8 @@ def process_game_info(game_data):
         
         # Run simulation n times
         for run in range(n):
-            run_data = {'simulation_run': run + 1}
+            run_data_A = {'simulation_run': run + 1}
+            run_data_B = {'simulation_run': run + 1}
             
             # Sample from distributions for each variable in each scenario
             scenario_payoffs = {}
@@ -153,15 +154,17 @@ def process_game_info(game_data):
                 scenario_payoffs[scenario] = (playerA_payoff, playerB_payoff)
                 
                 # Store variable values for this run and scenario
-                if run == 0:  # Only store variables for first run to avoid duplication
-                    for var_name, value in playerA_sampled.items():
-                        run_data[f"{var_name}_{scenario}"] = value
-                    for var_name, value in playerB_sampled.items():
-                        run_data[f"{var_name}_{scenario}"] = value
+                # Player A variables
+                for var_name, value in playerA_sampled.items():
+                    run_data_A[f"{var_name}_{scenario}"] = value
+                
+                # Player B variables
+                for var_name, value in playerB_sampled.items():
+                    run_data_B[f"{var_name}_{scenario}"] = value
             
             # Store variable values for this run
-            playerA_variables.append(run_data.copy())
-            playerB_variables.append(run_data.copy())
+            playerA_variables.append(run_data_A)
+            playerB_variables.append(run_data_B)
             
             # Create game with current scenario payoffs and solve
             outcomes = [
