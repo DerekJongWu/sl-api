@@ -3,7 +3,7 @@ from flask_cors import CORS
 import os
 from datetime import datetime
 import numpy as np
-from sl_package import Game
+from sl_package import Game, BackwardInductionSolver
 from sl_package.sampling import sample_from_distribution
 import pandas as pd
 import io
@@ -105,7 +105,7 @@ def process_game_info(game_data):
         game_data (dict): The received game info data
         
     Returns:
-        dict: Processed results from the custom software package
+        dict: Processed results and Excel file data
     """
     try:
         # Extract player data
@@ -115,89 +115,93 @@ def process_game_info(game_data):
         # Number of simulation runs
         n = 1000
         
-        # Dictionary to store outcome values for each run
-        run_outcomes = {}
-        
-        # Lists to store aggregated results for each scenario
-        scenario_results = {
-            'NT_NT': [],  # No Tariff - No Tariff
-            'T_NT': [],   # Tariff - No Tariff  
-            'NT_T': [],   # No Tariff - Tariff
-            'T_T': []     # Tariff - Tariff
-        }
+        # Data structures to store simulation results
+        playerA_variables = []  # For Excel sheet 1
+        playerB_variables = []  # For Excel sheet 2
+        payoffs_and_results = []  # For Excel sheet 3
         
         # Run simulation n times
         for run in range(n):
-            run_outcomes[run] = {}
+            run_data = {'simulation_run': run + 1}
             
-            # Process each scenario
+            # Sample from distributions for each variable in each scenario
+            scenario_payoffs = {}
+            
             for i, scenario in enumerate(playerA['scenarios']):
-                # Extract mean and stdev for each variable in this scenario
-                playerA_vars = playerA['variables']
-                playerB_vars = playerB['variables']
-                
-                # Get scenario values (mean values for this scenario)
-                playerA_scenario_vals = [float(x) for x in playerA['scenarioValues'][i]]
-                playerB_scenario_vals = [float(x) for x in playerB['scenarioValues'][i]]
-                
-                # Sample from distributions for each variable
-                sampled_values = {}
-                
                 # Sample Player A variables
-                for j, var in enumerate(playerA_vars):
+                playerA_sampled = {}
+                for j, var in enumerate(playerA['variables']):
                     var_name = var['variableNumber']
-                    # Use scenario value as mean, variable stdev as standard deviation
-                    mean = playerA_scenario_vals[j]  # Mean from scenarioValues
-                    stdev = float(var['stdev'])      # Stdev from variables
+                    mean = float(playerA['scenarioValues'][i][j])
+                    stdev = float(var['stdev'])
                     sampled_val = sample_from_distribution(mean, stdev, 1)[0]
-                    sampled_values[f"{var_name}_A"] = sampled_val
+                    playerA_sampled[f"{var_name}_A"] = sampled_val
                 
                 # Sample Player B variables  
-                for j, var in enumerate(playerB_vars):
+                playerB_sampled = {}
+                for j, var in enumerate(playerB['variables']):
                     var_name = var['variableNumber']
-                    # Use scenario value as mean, variable stdev as standard deviation
-                    mean = playerB_scenario_vals[j]  # Mean from scenarioValues
-                    stdev = float(var['stdev'])      # Stdev from variables
+                    mean = float(playerB['scenarioValues'][i][j])
+                    stdev = float(var['stdev'])
                     sampled_val = sample_from_distribution(mean, stdev, 1)[0]
-                    sampled_values[f"{var_name}_B"] = sampled_val
+                    playerB_sampled[f"{var_name}_B"] = sampled_val
                 
-                # Calculate scenario values using the formulas
-                # Player A formula: dynamically parse from game_data
-                playerA_result = evaluate_formula(playerA['formula'], sampled_values, 'A', playerA['variables'])
+                # Calculate payoffs using formulas
+                playerA_payoff = evaluate_formula(playerA['formula'], playerA_sampled, 'A', playerA['variables'])
+                playerB_payoff = evaluate_formula(playerB['formula'], playerB_sampled, 'B', playerB['variables'])
                 
-                # Player B formula: dynamically parse from game_data
-                playerB_result = evaluate_formula(playerB['formula'], sampled_values, 'B', playerB['variables'])
+                scenario_payoffs[scenario] = (playerA_payoff, playerB_payoff)
                 
-                # Store results for this run and scenario
-                run_outcomes[run][scenario] = {
-                    'playerA_result': playerA_result,
-                    'playerB_result': playerB_result,
-                    'sampled_values': sampled_values
-                }
-                
-                # Add to scenario results for aggregation
-                scenario_results[scenario].append({
-                    'playerA': playerA_result,
-                    'playerB': playerB_result
-                })
+                # Store variable values for this run and scenario
+                if run == 0:  # Only store variables for first run to avoid duplication
+                    for var_name, value in playerA_sampled.items():
+                        run_data[f"{var_name}_{scenario}"] = value
+                    for var_name, value in playerB_sampled.items():
+                        run_data[f"{var_name}_{scenario}"] = value
+            
+            # Store variable values for this run
+            playerA_variables.append(run_data.copy())
+            playerB_variables.append(run_data.copy())
+            
+            # Create game with current scenario payoffs and solve
+            outcomes = [
+                scenario_payoffs['NT_NT'],  # No Tariff - No Tariff
+                scenario_payoffs['T_NT'],   # Tariff - No Tariff  
+                scenario_payoffs['NT_T'],   # No Tariff - Tariff
+                scenario_payoffs['T_T']     # Tariff - Tariff
+            ]
+            
+            g = create_game(outcomes)
+            solver = BackwardInductionSolver(g)
+            solver.solve()
+            sim_result = solver.record_equilibrium()
+            
+            # Store payoff and result data for this run
+            payoff_data = {
+                'simulation_run': run + 1,
+                'NT_NT_PlayerA': scenario_payoffs['NT_NT'][0],
+                'NT_NT_PlayerB': scenario_payoffs['NT_NT'][1],
+                'T_NT_PlayerA': scenario_payoffs['T_NT'][0],
+                'T_NT_PlayerB': scenario_payoffs['T_NT'][1],
+                'NT_T_PlayerA': scenario_payoffs['NT_T'][0],
+                'NT_T_PlayerB': scenario_payoffs['NT_T'][1],
+                'T_T_PlayerA': scenario_payoffs['T_T'][0],
+                'T_T_PlayerB': scenario_payoffs['T_T'][1],
+                'equilibrium_result': str(sim_result)
+            }
+            payoffs_and_results.append(payoff_data)
         
-        # Calculate aggregated outcomes for each scenario
-        # These will be the final outcomes used in the game
-        final_outcomes = []
-        
-        # Create the game with the calculated outcomes
-        game = create_game(final_outcomes)
-        
-        # Prepare the response
+        # Prepare the response with Excel data
         processed_results = {
             'status': 'processed',
             'input_data': game_data,
             'processing_timestamp': datetime.now().isoformat(),
             'simulation_runs': n,
-            'final_outcomes': final_outcomes,
-            'scenario_breakdown': {},
-            'run_details': run_outcomes,  # Detailed results for each run
-            'game_created': True
+            'excel_data': {
+                'playerA_variables': playerA_variables,
+                'playerB_variables': playerB_variables,
+                'payoffs_and_results': payoffs_and_results
+            }
         }
         
         return processed_results
@@ -244,20 +248,32 @@ def receive_game_info():
                     'status': 'error'
                 }), 400
         
-        # For now, just return an empty Excel file
-        # TODO: Replace this with actual game info processing when ready
+        # Process the data using custom software package
+        processed_results = process_game_info(data)
         
-        # Create an empty Excel file in memory
-        df = pd.DataFrame()
+        # Create Excel file with three sheets
         output = io.BytesIO()
-        df.to_excel(output, index=False)
+        
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Sheet 1: Player A variable values for each simulation
+            df_playerA = pd.DataFrame(processed_results['excel_data']['playerA_variables'])
+            df_playerA.to_excel(writer, sheet_name='PlayerA_Variables', index=False)
+            
+            # Sheet 2: Player B variable values for each simulation
+            df_playerB = pd.DataFrame(processed_results['excel_data']['playerB_variables'])
+            df_playerB.to_excel(writer, sheet_name='PlayerB_Variables', index=False)
+            
+            # Sheet 3: Payoffs and results for each simulation
+            df_payoffs = pd.DataFrame(processed_results['excel_data']['payoffs_and_results'])
+            df_payoffs.to_excel(writer, sheet_name='Payoffs_andResults', index=False)
+        
         output.seek(0)
         
         return send_file(
             output, 
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
             as_attachment=True, 
-            download_name='game_info_results.xlsx'
+            download_name='game_simulation_results.xlsx'
         )
         
     except Exception as e:
