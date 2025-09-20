@@ -25,11 +25,25 @@ def evaluate_formula(formula, sampled_values, player_suffix, variables_data):
         float: Calculated result
     """
     try:
+        # Debug output (commented out for production)
+        # print(f"DEBUG: Evaluating formula '{formula}' for player {player_suffix}")
+        # print(f"DEBUG: Sampled values: {sampled_values}")
+        # print(f"DEBUG: Variables data: {variables_data}")
         # Create a safe evaluation environment with only the sampled values
         # Replace formula variables with actual sampled values
         eval_formula = formula
         
         # Handle different variable formats in the formula
+        # First, replace weight variables with actual weight values
+        for var in variables_data:
+            var_name = var['variableNumber']
+            weight = var.get('weight', 0.5)  # Default weight if not specified
+            # Handle both uppercase and lowercase variable names
+            eval_formula = eval_formula.replace(f"{var_name}_weight", str(weight))
+            eval_formula = eval_formula.replace(f"{var_name.lower()}_weight", str(weight))
+        
+        # print(f"DEBUG: After weight replacement: {eval_formula}")
+        
         # Replace v1_Val with v1_A, v2_Val with v2_A, etc.
         for var_name, value in sampled_values.items():
             if var_name.endswith(f"_{player_suffix}"):
@@ -37,7 +51,7 @@ def evaluate_formula(formula, sampled_values, player_suffix, variables_data):
                 base_var = var_name.replace(f"_{player_suffix}", "")
                 
                 # Check if this variable needs standardization
-                if f"{base_var}_Stnd" in formula:
+                if f"{base_var}_stnd" in formula or f"{base_var}_Stnd" in formula or f"{base_var.lower()}_stnd" in formula:
                     # Find the variable definition to get min, max, and desiredEffect
                     var_def = None
                     for var in variables_data:
@@ -61,11 +75,19 @@ def evaluate_formula(formula, sampled_values, player_suffix, variables_data):
                             # Default to positive if desiredEffect is not specified
                             standardized_val = (value - min_val) / (max_val - min_val)
                         
-                        # Replace the _Stnd variable with the standardized value
+                        # Clamp standardized value to [0, 1] range to avoid extreme values
+                        standardized_val = max(0.0, min(1.0, standardized_val))
+                        
+                        # Replace the _stnd variable with the standardized value
+                        eval_formula = eval_formula.replace(f"{base_var}_stnd", str(standardized_val))
                         eval_formula = eval_formula.replace(f"{base_var}_Stnd", str(standardized_val))
+                        eval_formula = eval_formula.replace(f"{base_var.lower()}_stnd", str(standardized_val))
+                        # print(f"DEBUG: After {base_var} standardization: {eval_formula}")
                     else:
                         # If variable definition not found, use original value
+                        eval_formula = eval_formula.replace(f"{base_var}_stnd", str(value))
                         eval_formula = eval_formula.replace(f"{base_var}_Stnd", str(value))
+                        eval_formula = eval_formula.replace(f"{base_var.lower()}_stnd", str(value))
                 else:
                     # Replace _Val variables with original sampled values
                     eval_formula = eval_formula.replace(f"{base_var}_Val", str(value))
