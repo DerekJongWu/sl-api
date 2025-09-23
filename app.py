@@ -141,87 +141,106 @@ def process_game_info(game_data):
         playerA_variables = []  # For Excel sheet 1
         playerB_variables = []  # For Excel sheet 2
         payoffs_and_results = []  # For Excel sheet 3
+        failed_simulations = []  # Track failed simulation runs
         
         # Run simulation n times
         for run in range(n):
-            run_data_A = {'simulation_run': run + 1}
-            run_data_B = {'simulation_run': run + 1}
-            
-            # Sample from distributions for each variable in each scenario
-            scenario_payoffs = {}
-            
-            for i, scenario in enumerate(playerA['scenarios']):
-                # Sample Player A variables
-                playerA_sampled = {}
-                for j, var in enumerate(playerA['variables']):
-                    var_name = var['variableNumber']
-                    mean = float(playerA['scenarioValues'][i][j])
-                    stdev = float(var['stdev'])
-                    sampled_val = sample_from_distribution(mean, stdev, 1)[0]
-                    playerA_sampled[f"{var_name}_A"] = sampled_val
+            try:
+                run_data_A = {'simulation_run': run + 1}
+                run_data_B = {'simulation_run': run + 1}
                 
-                # Sample Player B variables  
-                playerB_sampled = {}
-                for j, var in enumerate(playerB['variables']):
-                    var_name = var['variableNumber']
-                    mean = float(playerB['scenarioValues'][i][j])
-                    stdev = float(var['stdev'])
-                    sampled_val = sample_from_distribution(mean, stdev, 1)[0]
-                    playerB_sampled[f"{var_name}_B"] = sampled_val
+                # Sample from distributions for each variable in each scenario
+                scenario_payoffs = {}
                 
-                # Calculate payoffs using formulas
-                playerA_payoff = evaluate_formula(playerA['formula'], playerA_sampled, 'A', playerA['variables'])
-                playerB_payoff = evaluate_formula(playerB['formula'], playerB_sampled, 'B', playerB['variables'])
+                for i, scenario in enumerate(playerA['scenarios']):
+                    # Sample Player A variables
+                    playerA_sampled = {}
+                    for j, var in enumerate(playerA['variables']):
+                        var_name = var['variableNumber']
+                        mean = float(playerA['scenarioValues'][i][j])
+                        stdev = float(var['stdev'])
+                        sampled_val = sample_from_distribution(mean, stdev, 1)[0]
+                        playerA_sampled[f"{var_name}_A"] = sampled_val
+                    
+                    # Sample Player B variables  
+                    playerB_sampled = {}
+                    for j, var in enumerate(playerB['variables']):
+                        var_name = var['variableNumber']
+                        mean = float(playerB['scenarioValues'][i][j])
+                        stdev = float(var['stdev'])
+                        sampled_val = sample_from_distribution(mean, stdev, 1)[0]
+                        playerB_sampled[f"{var_name}_B"] = sampled_val
+                    
+                    # Calculate payoffs using formulas
+                    playerA_payoff = evaluate_formula(playerA['formula'], playerA_sampled, 'A', playerA['variables'])
+                    playerB_payoff = evaluate_formula(playerB['formula'], playerB_sampled, 'B', playerB['variables'])
+                    
+                    scenario_payoffs[scenario] = (playerA_payoff, playerB_payoff)
+                    
+                    # Store variable values for this run and scenario
+                    # Player A variables
+                    for var_name, value in playerA_sampled.items():
+                        run_data_A[f"{var_name}_{scenario}"] = value
+                    
+                    # Player B variables
+                    for var_name, value in playerB_sampled.items():
+                        run_data_B[f"{var_name}_{scenario}"] = value
                 
-                scenario_payoffs[scenario] = (playerA_payoff, playerB_payoff)
+                # Store variable values for this run
+                playerA_variables.append(run_data_A)
+                playerB_variables.append(run_data_B)
                 
-                # Store variable values for this run and scenario
-                # Player A variables
-                for var_name, value in playerA_sampled.items():
-                    run_data_A[f"{var_name}_{scenario}"] = value
+                # Create game with current scenario payoffs and solve
+                outcomes = [
+                    scenario_payoffs['NT_NT'],  # No Tariff - No Tariff
+                    scenario_payoffs['T_NT'],   # Tariff - No Tariff  
+                    scenario_payoffs['NT_T'],   # No Tariff - Tariff
+                    scenario_payoffs['T_T']     # Tariff - Tariff
+                ]
                 
-                # Player B variables
-                for var_name, value in playerB_sampled.items():
-                    run_data_B[f"{var_name}_{scenario}"] = value
-            
-            # Store variable values for this run
-            playerA_variables.append(run_data_A)
-            playerB_variables.append(run_data_B)
-            
-            # Create game with current scenario payoffs and solve
-            outcomes = [
-                scenario_payoffs['NT_NT'],  # No Tariff - No Tariff
-                scenario_payoffs['T_NT'],   # Tariff - No Tariff  
-                scenario_payoffs['NT_T'],   # No Tariff - Tariff
-                scenario_payoffs['T_T']     # Tariff - Tariff
-            ]
-            
-            g = create_game(outcomes)
-            solver = BackwardInductionSolver(g)
-            solver.solve()
-            sim_result = solver.record_equilibrium()
-            
-            # Store payoff and result data for this run
-            payoff_data = {
-                'simulation_run': run + 1,
-                'NT_NT_PlayerA': scenario_payoffs['NT_NT'][0],
-                'NT_NT_PlayerB': scenario_payoffs['NT_NT'][1],
-                'T_NT_PlayerA': scenario_payoffs['T_NT'][0],
-                'T_NT_PlayerB': scenario_payoffs['T_NT'][1],
-                'NT_T_PlayerA': scenario_payoffs['NT_T'][0],
-                'NT_T_PlayerB': scenario_payoffs['NT_T'][1],
-                'T_T_PlayerA': scenario_payoffs['T_T'][0],
-                'T_T_PlayerB': scenario_payoffs['T_T'][1],
-                'equilibrium_result': str(sim_result)
-            }
-            payoffs_and_results.append(payoff_data)
+                g = create_game(outcomes)
+                solver = BackwardInductionSolver(g)
+                solver.solve()
+                sim_result = solver.record_equilibrium()
+                
+                # Store payoff and result data for this run
+                payoff_data = {
+                    'simulation_run': run + 1,
+                    'NT_NT_PlayerA': scenario_payoffs['NT_NT'][0],
+                    'NT_NT_PlayerB': scenario_payoffs['NT_NT'][1],
+                    'T_NT_PlayerA': scenario_payoffs['T_NT'][0],
+                    'T_NT_PlayerB': scenario_payoffs['T_NT'][1],
+                    'NT_T_PlayerA': scenario_payoffs['NT_T'][0],
+                    'NT_T_PlayerB': scenario_payoffs['NT_T'][1],
+                    'T_T_PlayerA': scenario_payoffs['T_T'][0],
+                    'T_T_PlayerB': scenario_payoffs['T_T'][1],
+                    'equilibrium_result': str(sim_result)
+                }
+                payoffs_and_results.append(payoff_data)
+                
+            except Exception as sim_error:
+                # Log the failed simulation but continue with the next one
+                failed_simulations.append({
+                    'simulation_run': run + 1,
+                    'error': str(sim_error),
+                    'error_type': type(sim_error).__name__
+                })
+                print(f"Warning: Simulation run {run + 1} failed: {sim_error}")
+                continue
         
         # Prepare the response with Excel data
+        successful_runs = len(payoffs_and_results)
+        failed_count = len(failed_simulations)
+        
         processed_results = {
             'status': 'processed',
             'input_data': game_data,
             'processing_timestamp': datetime.now().isoformat(),
             'simulation_runs': n,
+            'successful_runs': successful_runs,
+            'failed_runs': failed_count,
+            'success_rate': f"{(successful_runs/n)*100:.1f}%" if n > 0 else "0%",
+            'failed_simulations': failed_simulations if failed_count > 0 else None,
             'excel_data': {
                 'playerA_variables': playerA_variables,
                 'playerB_variables': playerB_variables,
