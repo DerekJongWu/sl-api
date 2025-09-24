@@ -11,6 +11,20 @@ import io
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
+def clamp_to_bounds(value, min_val, max_val):
+    """
+    Clamp a value to the specified min and max bounds.
+    
+    Args:
+        value (float): The value to clamp
+        min_val (float): Minimum allowed value
+        max_val (float): Maximum allowed value
+        
+    Returns:
+        float: The clamped value
+    """
+    return max(min_val, min(max_val, value))
+
 def evaluate_formula(formula, sampled_values, player_suffix, variables_data):
     """
     Evaluate a formula string using the sampled values.
@@ -160,7 +174,13 @@ def process_game_info(game_data):
                         mean = float(playerA['scenarioValues'][i][j])
                         stdev = float(var['stdev'])
                         sampled_val = sample_from_distribution(mean, stdev, 1)[0]
-                        playerA_sampled[f"{var_name}_A"] = sampled_val
+                        
+                        # Apply bounds checking after sampling but before standardization
+                        min_val = float(var['min'])
+                        max_val = float(var['max'])
+                        clamped_val = clamp_to_bounds(sampled_val, min_val, max_val)
+                        
+                        playerA_sampled[f"{var_name}_A"] = clamped_val
                     
                     # Sample Player B variables  
                     playerB_sampled = {}
@@ -169,7 +189,13 @@ def process_game_info(game_data):
                         mean = float(playerB['scenarioValues'][i][j])
                         stdev = float(var['stdev'])
                         sampled_val = sample_from_distribution(mean, stdev, 1)[0]
-                        playerB_sampled[f"{var_name}_B"] = sampled_val
+                        
+                        # Apply bounds checking after sampling but before standardization
+                        min_val = float(var['min'])
+                        max_val = float(var['max'])
+                        clamped_val = clamp_to_bounds(sampled_val, min_val, max_val)
+                        
+                        playerB_sampled[f"{var_name}_B"] = clamped_val
                     
                     # Calculate payoffs using formulas
                     playerA_payoff = evaluate_formula(playerA['formula'], playerA_sampled, 'A', playerA['variables'])
