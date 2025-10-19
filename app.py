@@ -217,11 +217,16 @@ def process_game_info(game_data):
                 playerB_variables.append(run_data_B)
                 
                 # Create game with current scenario payoffs and solve
+                # Outcomes must be ordered according to game tree traversal:
+                # 1. Player A: Tariff -> Player B: Tariff (T_T)
+                # 2. Player A: Tariff -> Player B: No Tariff (T_NT)
+                # 3. Player A: No Tariff -> Player B: Tariff (NT_T)
+                # 4. Player A: No Tariff -> Player B: No Tariff (NT_NT)
                 outcomes = [
-                    scenario_payoffs['NT_NT'],  # No Tariff - No Tariff
-                    scenario_payoffs['T_NT'],   # Tariff - No Tariff  
+                    scenario_payoffs['T_T'],    # Tariff - Tariff
+                    scenario_payoffs['T_NT'],   # Tariff - No Tariff
                     scenario_payoffs['NT_T'],   # No Tariff - Tariff
-                    scenario_payoffs['T_T']     # Tariff - Tariff
+                    scenario_payoffs['NT_NT']   # No Tariff - No Tariff
                 ]
                 
                 g = create_game(outcomes)
